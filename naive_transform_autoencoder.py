@@ -2,15 +2,15 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
+import tensorflow.keras as krs
 import os
-from tensorflow.keras.models import Model
-from tensorflow.keras import layers, losses
 from sklearn.model_selection import train_test_split
 
 # %% Import helpers
 from tools.audio_tools import read_audio, play_audio
-from tools.feature_tools import compute_mels, compute_imels
+from tools.feature_tools import compute_mels, compute_imels, sample_rate_default, n_fft_default, n_mels_default
 from tools.plot_tools import make_figax, plot_audio, plot_spectral_feature
+from tools.tensorflow_tools import TransformLayer
 
 # %% Load dataset
 n_samples = 1000
@@ -29,50 +29,51 @@ sample_files = np.random.choice(data_files, size=n_samples, replace=False) if le
 print("Reading Audio Tracks")
 sample_audio = np.array([read_audio(os.path.join(data_dir, audio_file)) for audio_file in sample_files])
 
-# Extract the features
-print("Extracting Features")
-sample_features = np.array([compute_mels(audio) for audio in sample_audio]).astype("float32")
-feature_shape = sample_features[0].shape
-feature_size = sample_features[0].size
-print(f"{feature_shape = }")
-print(f"{feature_size = }")
-sample_features.reshape((len(sample_features), -1))
-
 # %% Make the test/train split
-train_features, test_features = train_test_split(sample_features, test_size=0.2)
+train_features, test_features = train_test_split(sample_audio, test_size=0.2)
 print(train_features.shape)
 print(f"{len(train_features) = }")
 print(f"{len(test_features) = }")
 
-# %% Define the autoencoder model
-class NaiveAutoencoder(Model):
-    def __init__(self, latent_dim, feature_shape):
+# %% Define Transform -> Inverse Model 
+class NaiveTransformAutoencoder(krs.models.Model):
+    def __init__(self, latent_dim, transform_shape, **kwargs):
         super().__init__()
-
-        # Saving the feature & latent space dimensions
+        self.transform_shape = transform_shape
+        self.transform_size = np.multiply.reduce(transform_shape)
         self.latent_dim = latent_dim
-        self.feature_shape = feature_shape
-        self.feature_size = np.multiply.reduce(feature_shape)
 
-        # Building encoder & decoder models (single layer)
-        self.encoder = tf.keras.Sequential([
-            layers.Flatten(),
-            layers.Dense(self.latent_dim, activation=lambda x: tf.nn.leaky_relu(x, alpha=-0.3)),
+        self.encoder = krs.Sequential([
+            TransformLayer(compute_mels, **kwargs),
+            krs.layers.Flatten(),
+            krs.layers.Dense(self.latent_dim, activation="relu")
         ])
 
-        self.decoder = tf.keras.Sequential([
-            layers.Dense(self.feature_size, activation=lambda x: tf.nn.leaky_relu(x, alpha=-0.3)),
-            layers.Reshape(feature_shape)
+        self.decoder = krs.Sequential([
+            krs.layers.Dense(self.transform_size, activation="relu"),
+            krs.layers.Reshape(self.transform_shape),
+            TransformLayer(compute_imels, **kwargs)
         ])
-    def call(self, x):
-        encoded = self.encoder(x)
+
+    def call(self, inputs):
+        encoded = self.encoder(inputs)
         decoded = self.decoder(encoded)
         return decoded
 
-# %% Create an autoencoder
-latent_dim = feature_size // 8
-autoencoder = NaiveAutoencoder(latent_dim, feature_shape)
-autoencoder.compile(optimizer="adam", loss=losses.MeanSquaredLogarithmicError())
+# %% Compute transform shape
+audio_length_seconds = 1
+sample_length = audio_length_seconds * sample_rate_default
+padded_length = sample_length + n_fft_default // 2
+transform_frames = int(padded_length / n_fft_default * 4) + 1
+transform_shape = (n_mels_default, transform_frames)
+transform_size = np.multiply.reduce(transform_shape)
+
+# %% Construct the autoencoder
+latent_dim = transform_size // 8
+autoencoder = NaiveTransformAutoencoder(latent_dim, transform_shape)
+autoencoder.compile(optimizer="adam", loss=krs.losses.MeanSquaredLogarithmicError())
+# autoencoder.build(sample_length)
+# autoencoder.summary()
 
 # %% Train the autoencoder
 autoencoder.fit(train_features, train_features, epochs=len(train_features) // 10, shuffle=True, validation_data=(test_features, test_features))
@@ -103,15 +104,8 @@ for test_file in test_files:
     plt.show()
     player = play_audio(inverse_audio)
 
-
-    print("Autoencoding")
-    reconstructed_feature = np.array(autoencoder.call(np.array([audio_feature])))[0].astype(float)
-    fig, ax = plot_spectral_feature(reconstructed_feature)
-    ax.set_title("Autoencoded feature space")
-    plt.show()
-
-    print("Reconstructing autencoded audio")
-    reconstructed_audio = compute_imels(reconstructed_feature)
+    print("Reconstructing audio")
+    reconstructed_audio = np.array(autoencoder.call(np.array([audio])))[0].astype(float)
     fig, ax = plot_audio(reconstructed_audio)
     ax.set_title("Reconstructed Audio")
     plt.show()

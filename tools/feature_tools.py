@@ -3,8 +3,8 @@ from .audio_tools import sample_rate
 
 # Default values
 n_fft_default = 2048
-n_mels_default = 64
-n_mfcc_default = 64
+n_mels_default = 256
+n_mfcc_default = 256
 sample_rate_default = sample_rate
 
 # Feature transform functions
