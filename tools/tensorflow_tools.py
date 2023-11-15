@@ -34,7 +34,7 @@ class Conv2DBlock(krs.layers.Layer):
                         self.filters,
                         self.kernel_size,
                         padding="same",
-                        activation="relu",
+                        activation=self.activation,
                     )
                 )
             else:
@@ -43,7 +43,7 @@ class Conv2DBlock(krs.layers.Layer):
                         self.filters,
                         self.kernel_size,
                         padding="same",
-                        activation=self.activation
+                        activation=self.activation,
                     )
                 )
         super().build(input_shape)
@@ -52,9 +52,12 @@ class Conv2DBlock(krs.layers.Layer):
         x = inputs
         for conv_layer in self.conv_layers:
             x = conv_layer(x)
-
+        
         if self.skip_connection:
-            x += inputs
+            inputs_mean = tf.reduce_mean(inputs, axis=3)
+            inputs_mean = tf.expand_dims(inputs_mean, 3)
+            skip = tf.repeat(inputs_mean, x.shape[3], axis=3)
+            x = tf.add(x, skip)
         
         return x
 
@@ -86,7 +89,7 @@ class Conv2DEncoderBlock(krs.layers.Layer):
         add_padding=True, 
         pooling_type="average", 
     ):
-        super().__init__(**kwargs)
+        super().__init__()
         self.filters = filters
         self.kernel_size = kernel_size
         self.depth = depth
@@ -96,7 +99,6 @@ class Conv2DEncoderBlock(krs.layers.Layer):
         self.pooling_type = pooling_type
 
     def build(self, input_shape):
-        print(f"{input_shape = }")
         # Conv2D Block
         self.conv_block = Conv2DBlock(
             self.filters,
@@ -114,11 +116,10 @@ class Conv2DEncoderBlock(krs.layers.Layer):
         )
 
         # Add pooling layer
-        pool_size = 2
         if self.pooling_type == "average":
-            self.pooling_layer = krs.layers.AveragePooling2D(pool_size=(pool_size, pool_size), pool_stride=(pool_size, pool_size))
+            self.pooling_layer = krs.layers.AveragePooling2D(pool_size=(2, 2))
         elif self.pooling_type == "max":
-            self.pooling_layer = krs.layers.MaxPooling2D(pool_size=(pool_size, pool_size), pool_stride=(pool_size, pool_size))
+            self.pooling_layer = krs.layers.MaxPooling2D(pool_size=(2, 2))
         elif self.pooling_type == "none":
             self.pooling_layer = None
         else:
@@ -155,9 +156,8 @@ class Conv2DDecoderBlock(krs.layers.Layer):
         activation = "relu", 
         remove_padding=True, 
         upsampling=True, 
-        **kwargs
     ):
-        super().__init__(**kwargs)
+        super().__init__()
         self.filters = filters
         self.kernel_size = kernel_size
         self.depth = depth
@@ -209,3 +209,102 @@ class Conv2DDecoderBlock(krs.layers.Layer):
             "remove_padding": self.remove_padding,
             "upsampling": self.upsampling,
         }
+
+@krs.saving.register_keras_serializable()
+class Conv2DEncoder(krs.models.Model):
+    def __init__(
+        self, 
+        layer_filters, 
+        layer_padding,
+        kernel_size,
+        conv_depth,
+        skip_connection=True,
+        activation="relu",
+        pooling_type="average",
+    ):
+        super().__init__()
+
+        # Save parameters
+        self.layer_filters = layer_filters
+        self.layer_padding = layer_padding
+        self.kernel_size = kernel_size
+        self.conv_depth = conv_depth
+        self.skip_connection = skip_connection
+        self.activation = activation
+        self.pooling_type = pooling_type
+
+        # Build encoder
+        self.encoder = krs.models.Sequential()
+        n_layers = len(self.layer_filters)
+        for layer, (filters, padding) in enumerate(zip(self.layer_filters, self.layer_padding)):
+            # No pooling for last layer
+            #pooling_type = self.pooling_type if layer < n_layers - 1 else "none" 
+            self.encoder.add(
+                Conv2DEncoderBlock(
+                    filters,
+                    self.kernel_size,
+                    self.conv_depth,
+                    skip_connection=self.skip_connection,
+                    activation=self.activation,
+                    add_padding=padding,
+                    pooling_type=self.pooling_type,
+                )
+            )
+        # Add one more layer without pooling
+        self.encoder.add(
+            Conv2DEncoderBlock(
+                self.layer_filters[-1],
+                self.kernel_size,
+                self.conv_depth,
+                skip_connection=self.skip_connection,
+                activation=self.activation,
+                add_padding=False,
+                pooling_type="none"
+            )
+        )
+
+    def call(self, x):
+        h = self.encoder(x)
+        return h
+
+@krs.saving.register_keras_serializable()
+class Conv2DDecoder(krs.models.Model):
+    def __init__(
+        self,
+        layer_filters,
+        layer_padding,
+        kernel_size,
+        conv_depth,
+        skip_connection=True,
+        activation="relu",
+    ):
+        super().__init__()
+
+        # Save parameters
+        self.layer_filters = layer_filters
+        self.layer_padding = layer_padding
+        self.kernel_size = kernel_size
+        self.conv_depth = conv_depth
+        self.skip_connection = skip_connection
+        self.activation = activation
+
+        # Build decoder
+        self.decoder = krs.models.Sequential()
+        n_layers = len(self.layer_filters)
+        for layer, (filters, padding) in enumerate(zip(self.layer_filters, self.layer_padding)):
+            self.decoder.add(
+                Conv2DDecoderBlock(
+                    filters,
+                    self.kernel_size,
+                    self.conv_depth,
+                    skip_connection=self.skip_connection,
+                    activation=self.activation,
+                    remove_padding=padding,
+                    upsampling=True,
+                )
+            )
+
+    def call(self, h):
+        x_hat = self.decoder(h)
+        return x_hat
+

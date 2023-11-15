@@ -29,6 +29,8 @@ def plot_audio(x, fn=None, sr=default_sample_rate, fig=None, ax=None):
     return fig, ax
 
 def plot_spectral_feature(feature, fn=lambda x: 20 * np.log10(x + 1e-3), fig=None, ax=None):
+    feature = np.squeeze(feature)
+    
     if fig is None or ax is None:
         fig, ax = make_figax()
 
