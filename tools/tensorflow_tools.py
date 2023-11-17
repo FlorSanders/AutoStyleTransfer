@@ -308,3 +308,43 @@ class Conv2DDecoder(krs.models.Model):
         x_hat = self.decoder(h)
         return x_hat
 
+@krs.saving.register_keras_serializable()
+class MLP(krs.models.Model):
+    def __init__(
+        self, 
+        hidden_dims, 
+        output_dim,
+        hidden_activation="relu",
+        output_activation="relu",
+        **kwargs
+    ):
+        super().__init__()
+
+        # Store params
+        self.hidden_dims = hidden_dims
+        self.output_dim = output_dim
+
+        # Start MLP with flattening layer
+        self.mlp = krs.models.Sequential(
+            krs.layers.Flatten()
+        )
+
+        # Add dense layers
+        self.layer_dims = hidden_dims
+        for units in self.layer_dims:
+            self.mlp.add(
+                krs.layers.Dense(
+                    units,
+                    activation=hidden_activation,
+                    **kwargs
+                )
+            )
+        self.mlp.add(
+            krs.layers.Dense(
+                output_dim
+            )
+        )
+    
+    def call(self, x):
+        y_hat = self.mlp(x)
+        return y_hat
