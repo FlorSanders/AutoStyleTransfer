@@ -69,7 +69,7 @@ def load_data(data_path, feature_extractors = [compute_mels], n_samples="all"):
 X_dev = np.NaN
 X_weights = np.NaN
 
-def normalize_features(X_raw_train, X_raw_test = None, epsilon=1e-3):
+def normalize_features(X_raw_train, X_raw_val = None, X_raw_test = None, epsilon=1e-3):
     global X_dev, X_weights
     # Rescale by the standard deviation
     X_dev = np.std(X_raw_train)
@@ -83,13 +83,25 @@ def normalize_features(X_raw_train, X_raw_test = None, epsilon=1e-3):
     X_train /= X_weights
 
     # Apply to test set
+    if X_raw_val is not None:
+        X_val = X_raw_val / X_dev
+        X_val = np.log10(X_val + 1)
+        X_val /= X_weights
+
     if X_raw_test is not None:
         X_test = X_raw_test / X_dev
         X_test = np.log10(X_test + 1)
         X_test /= X_weights
+    
+    if X_raw_test is None and X_raw_val is None:
+        return X_train
+    elif X_raw_test is None and X_raw_val is not None:
+        return X_train, X_val
+    elif X_raw_test is not None and X_raw_val is None:
         return X_train, X_test
     else:
-        return X_train
+        return X_train, X_val, X_test
+   
 
 def denormalize_features(X):
     global X_dev, X_weights
