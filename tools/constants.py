@@ -14,8 +14,8 @@ models_path = os.path.join(data_path, models_dir)
 
 # Preprocessing settings
 n_secs = 1
-# cut_classical_path = os.path.join(cut_classical_path, f"{n_secs}s")
-# cut_jazz_path = os.path.join(cut_jazz_path, f"{n_secs}s")
+cut_classical_path = os.path.join(cut_classical_path, f"{n_secs}s")
+cut_jazz_path = os.path.join(cut_jazz_path, f"{n_secs}s")
 
 ## Domain sizes
 default_sample_rate = 44100
