@@ -49,10 +49,16 @@ def load_data(data_path, feature_extractors = [compute_mels], n_samples="all"):
     # Load files
     data = [None] * n_samples
     for i, sample_file in enumerate(samples):
-        # Read audio
-        audio = read_audio(os.path.join(data_path, sample_file))
-        # Extract features
-        features = np.array([extractor(audio) for extractor in feature_extractors])
+        file_name, file_ext = os.path.splitext(sample_file)
+        if file_ext == ".wav":
+            # Read audio
+            audio = read_audio(os.path.join(data_path, sample_file))
+            # Extract features
+            features = np.array([extractor(audio) for extractor in feature_extractors])
+        elif file_ext == ".npy":
+            # Read features
+            features = [np.load(os.path.join(data_path, sample_file))]
+        
         # Add features to data
         data[i] = features
         # Print progress
