@@ -66,11 +66,11 @@ def load_data(data_path, feature_extractors = [compute_mels], n_samples="all"):
     return data
 
 # Save normalization factors globally
-X_dev = np.NaN
-X_weights = np.NaN
+normalize_factors = {}
 
-def normalize_features(X_raw_train, X_raw_val = None, X_raw_test = None, epsilon=1e-3):
-    global X_dev, X_weights
+def normalize_features(X_raw_train, X_raw_val = None, X_raw_test = None, epsilon=1e-3, name="mixed"):
+    global normalize_factors
+
     # Rescale by the standard deviation
     X_dev = np.std(X_raw_train)
     X_train = X_raw_train / X_dev
@@ -81,6 +81,12 @@ def normalize_features(X_raw_train, X_raw_val = None, X_raw_test = None, epsilon
     # Frequency weight scaling
     X_weights = np.std(X_train, axis=(0,1,3)).reshape(1,1,-1,1) + epsilon
     X_train /= X_weights
+
+    # Save normalization factors
+    normalize_factors[name] = {
+        "X_dev": X_dev,
+        "X_weights": X_weights,
+    }
 
     # Apply to test set
     if X_raw_val is not None:
@@ -101,9 +107,10 @@ def normalize_features(X_raw_train, X_raw_val = None, X_raw_test = None, epsilon
         return X_train, X_test
     else:
         return X_train, X_val, X_test
-   
 
-def denormalize_features(X):
-    global X_dev, X_weights
+def denormalize_features(X, name="mixed"):
+    global normalize_factors
+    X_dev = normalize_factors[name]["X_dev"]
+    X_weights = normalize_factors[name]["X_weights"]
     X_raw = (10**(X * X_weights) - 1) * X_dev
     return X_raw
