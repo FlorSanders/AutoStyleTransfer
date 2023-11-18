@@ -4,7 +4,7 @@ import numpy as np
 import os
 import json
 
-def load_optimal_params(results_path):
+def load_optimal_params(results_path, loss_key):
     optimal_loss = np.inf
     optimal_params = None
     for file in os.listdir(results_path):
