@@ -316,7 +316,6 @@ class MLP(krs.models.Model):
         output_dim,
         hidden_activation="relu",
         output_activation="relu",
-        **kwargs
     ):
         super().__init__()
 
@@ -336,7 +335,6 @@ class MLP(krs.models.Model):
                 krs.layers.Dense(
                     units,
                     activation=hidden_activation,
-                    **kwargs
                 )
             )
         self.mlp.add(
@@ -348,6 +346,7 @@ class MLP(krs.models.Model):
     def call(self, x):
         y_hat = self.mlp(x)
         return y_hat
+    
 
 class GAN(krs.models.Model):
     def __init__(self, generator, discriminator):

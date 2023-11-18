@@ -335,6 +335,9 @@ class GANDiscriminator(krs.models.Model):
 
         # Return loss
         return {m.name: m.result() for m in self.metrics}
+    
+    def get_config(self):
+        return self.params
 
 @krs.saving.register_keras_serializable()
 class GANGenerator(krs.models.Model):
@@ -530,3 +533,6 @@ class GANGenerator(krs.models.Model):
 
         # Return losses
         return {m.name: m.result() for m in self.metrics}
+    
+    def get_config(self):
+        return self.params
