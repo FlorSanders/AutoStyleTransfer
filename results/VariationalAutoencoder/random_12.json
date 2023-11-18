@@ -1,0 +1,1 @@
+{"params": {"feature_shape": [67, 128, 1], "compression": 8, "kernel_size": 3, "conv_depth": 1, "input_chans_multiplier": 2, "skip_connection": false, "pooling_type": "max", "kl_reg": 1e-07}, "losses": {"loss": NaN, "r_loss": NaN, "kl_loss": NaN, "val_loss": NaN, "val_r_loss": NaN, "val_kl_loss": NaN}}

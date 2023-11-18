@@ -140,7 +140,7 @@ def tune_hyperparameters(
                 y_val=y_val, 
                 epochs=epochs, 
                 compile_kwargs=compile_kwargs, 
-                verbose=False
+                verbose=verbose
             )
             if loss_opt < optimal_loss:
                 optimal_params[param_key] = value_opt
