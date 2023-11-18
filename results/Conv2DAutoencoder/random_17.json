@@ -1,1 +1,1 @@
-{"params": {"feature_shape": [67, 128, 1], "compression": 8, "kernel_size": 3, "conv_depth": 3, "input_chans_multiplier": 4, "skip_connection": false, "pooling_type": "max"}, "losses": {"loss": 0.19418594241142273, "val_loss": 0.1962255835533142}}
+{"params": {"feature_shape": [67, 128, 1], "compression": 8, "kernel_size": 5, "conv_depth": 3, "input_chans_multiplier": 4, "skip_connection": false, "pooling_type": "max"}, "losses": {"loss": 0.19267569482326508, "val_loss": 0.19219765067100525}}

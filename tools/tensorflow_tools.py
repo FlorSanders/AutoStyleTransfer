@@ -45,7 +45,7 @@ def tune_hyperparameter(
     compile_kwargs={"optimizer": "adam"}, 
     verbose=False
 ):
-    losses = np.zeros_like(param_values)
+    losses = np.zeros_like(param_values, dtype="float")
     for i, value in enumerate(param_values):
         print(f"Training model for {param_key} = {value}")
         # Set params
@@ -67,13 +67,17 @@ def tune_hyperparameter(
         )
         # Get results
         history = history.history
-        loss = history.get(loss_key)[-1]
+        loss = history[loss_key][-1]
         losses[i] = loss
         # Save data
         if results_path is not None:
             save_path = os.path.join(results_path, f"{param_key}_{value}.json")
             save_params_and_results(params, history, save_path)
-    i_opt = np.argmin(losses)
+    print(f"{losses = }")
+    if np.all(losses == np.nan):
+        print("WARNING: All losses are NAN")
+        return default_params[param_key], np.inf
+    i_opt = np.nanargmin(losses)
     loss_opt = losses[i_opt]
     value_opt = param_values[i_opt]
     print(f"Optimal {param_key} = {value_opt} -> {loss_opt}")
