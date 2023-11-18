@@ -220,22 +220,14 @@ class VariationalAutoencoder(krs.models.Model):
 
 @krs.saving.register_keras_serializable()
 class GANDiscriminator(krs.models.Model):
-    def __init__(
-        self,
-        feature_shape,
-        mlp_layers,
-        conv_compression,
-        conv_kernel_size,
-        conv_pooling_type="max",
-        **params
-    ):
+    def __init__(self, **params):
         super().__init__()
         
         # Store parameters
         self.params = params
         self.feature_shape = params.get("feature_shape")
         self.input_time, self.input_mels, self.input_chans = self.feature_shape
-        self.feature_size = np.prod(feature_shape)
+        self.feature_size = np.prod(self.feature_shape)
         self.mlp_layers = params.get("mlp_layers")
         self.conv_compression = params.get("conv_compression")
         self.conv_kernel_size = params.get("conv_kernel_size")
@@ -250,7 +242,7 @@ class GANDiscriminator(krs.models.Model):
         self.output_activation = "sigmoid"
 
         # CNN feature extractor
-        self.conv_layers = np.log2(conv_compression)
+        self.conv_layers = np.log2(self.conv_compression)
         assert self.conv_layers == np.round(self.conv_layers), "compression should be a power of 2"
         self.conv_layers = int(self.conv_layers)
         conv_layer_filters = [self.input_chans * self.conv_input_chans_multiplier * 2**(n+1) for n in range(self.conv_layers)]
@@ -269,7 +261,6 @@ class GANDiscriminator(krs.models.Model):
         mlp_input_size = self.feature_size / self.conv_compression
         mlp_output_size = 1
         mlp_hidden_dims = np.round(np.logspace(np.log2(mlp_input_size), np.log2(mlp_output_size), self.mlp_layers + 1, base=2)[1:-1]).astype(int)
-        print(f"{mlp_hidden_dims = }")
         self.mlp = MLP(
             mlp_hidden_dims,
             mlp_output_size,
@@ -336,7 +327,7 @@ class GANDiscriminator(krs.models.Model):
 
         # Discriminate
         p_real = self.call(x_real)
-        p_rake = self.call(x_fake)
+        p_fake = self.call(x_fake)
 
         # Compute loss
         loss = self.compute_loss(p_real, p_fake)
@@ -360,8 +351,8 @@ class GANGenerator(krs.models.Model):
         self.activation = params.get("activation", "relu")
         self.pooling_type = params.get("pooling_type", "average")
         self.gan_reg = params.get("gan_reg")
-        self.gan_reg = params.get("c_reg")
-        self.gan_reg = params.get("s_reg")
+        self.c_reg = params.get("c_reg")
+        self.s_reg = params.get("s_reg")
 
         # Determine nr of layers to be used (and check config validity)
         k = np.log2(self.input_chans_multiplier)

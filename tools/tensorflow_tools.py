@@ -4,6 +4,21 @@ import numpy as np
 import os
 import json
 
+def load_optimal_params(results_path):
+    optimal_loss = np.inf
+    optimal_params = None
+    for file in os.listdir(results_path):
+        if os.path.splitext(file)[-1] != ".json":
+            continue
+        with open(os.path.join(results_path, file), "r") as results_file:
+            results = json.load(results_file)
+        
+        loss = results["losses"][loss_key]
+        if loss < optimal_loss:
+            optimal_loss = loss
+            optimal_params = results["params"]
+    return optimal_params, optimal_loss
+
 def save_params_and_results(params, history, json_path):
     if not isinstance(history, dict):
         history = history.history
@@ -61,7 +76,7 @@ def tune_hyperparameter(
     i_opt = np.argmin(losses)
     loss_opt = losses[i_opt]
     value_opt = param_values[i_opt]
-    print(f"Optimal {param_key} = {value_opt}")
+    print(f"Optimal {param_key} = {value_opt} -> {loss_opt}")
     return value_opt, loss_opt
 
 def tune_hyperparameters(
@@ -90,7 +105,7 @@ def tune_hyperparameters(
             params = default_params.copy()
             if i > 0:
                 # Make random choices
-                print("Optimizing for random choices")
+                print(f"Optimizing for random choice {i} / {random_attempts}")
                 for key, values in zip(param_keys, param_ranges):
                     params[key] = values[np.random.choice(len(values))]
             else:
@@ -140,7 +155,7 @@ def tune_hyperparameters(
                 y_val=y_val, 
                 epochs=epochs, 
                 compile_kwargs=compile_kwargs, 
-                verbose=False
+                verbose=verbose
             )
             if loss_opt < optimal_loss:
                 optimal_params[param_key] = value_opt
