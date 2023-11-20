@@ -39,10 +39,11 @@ def compute_imfcc(x_mfcc, sr=default_sample_rate, n_fft = default_n_fft, n_mels 
 
 def load_data(data_path, feature_extractors = [compute_mels], n_samples="all"):
     # Read directory
-    samples = os.listdir(data_path)
+    samples = sorted(os.listdir(data_path))
     # Sample files
     if n_samples != "all":
         n_samples = min(len(samples), n_samples)
+        np.random.seed(1234)
         samples = np.random.choice(samples, size=n_samples, replace=False)
     else:
         n_samples = len(samples)

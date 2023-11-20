@@ -358,6 +358,7 @@ class GANGenerator(krs.models.Model):
         self.gan_reg = params.get("gan_reg")
         self.c_reg = params.get("c_reg")
         self.s_reg = params.get("s_reg")
+        self.concatenate = params.get("concatenate", True)
 
         # Determine nr of layers to be used (and check config validity)
         k = np.log2(self.input_chans_multiplier)
@@ -376,16 +377,6 @@ class GANGenerator(krs.models.Model):
             time = (time + layer_padding[n]) // 2
         
         # Build encoders
-        self.style_encoder = Conv2DEncoder(
-            layer_filters[1:],
-            layer_padding,
-            self.kernel_size,
-            self.conv_depth,
-            skip_connection=self.skip_connection,
-            activation=self.activation,
-            pooling_type=self.pooling_type,
-        )
-
         self.content_encoder = Conv2DEncoder(
             layer_filters[1:],
             layer_padding,
@@ -395,6 +386,18 @@ class GANGenerator(krs.models.Model):
             activation=self.activation,
             pooling_type=self.pooling_type
         )
+        
+        if not self.concatenate:
+            # Use one encoder for both style & content
+            self.style_encoder = Conv2DEncoder(
+                layer_filters[1:],
+                layer_padding,
+                self.kernel_size,
+                self.conv_depth,
+                skip_connection=self.skip_connection,
+                activation=self.activation,
+                pooling_type=self.pooling_type,
+            )
 
         # Build decoder
         self.decoder = Conv2DDecoder(
@@ -418,16 +421,30 @@ class GANGenerator(krs.models.Model):
         return [self.g_loss_tracker, self.r_loss_tracker, self.gan_loss_tracker, self.c_loss_tracker, self.s_loss_tracker]
     
     def encode(self, x):
-        content = self.content_encoder(x)
-        style = self.style_encoder(x)
+        if self.concatenate:
+            h = self.content_encoder(x)
+            content, style = tf.split(h, 2, axis=3)
+        else:
+            content = self.content_encoder(x)
+            style = self.style_encoder(x)
         return content, style
 
     def sample_style(self, style):
-        style_fake = tf.random.normal(shape = style.shape[1:])
+        #print(f"{style.shape = }")
+        #sigma = tf.reshape(tf.math.reduce_std(style, axis=(1,2,3)) / tf.math.sqrt(12.), (-1, 1, 1, 1))
+        #print(f"{sigma.shape = }")
+        #style_fake = tf.expand_dims(tf.random.uniform(shape = style.shape[1:]), axis=0) * sigma
+        #print(f"{style_fake.shape = }")
+        
+        style_fake = tf.expand_dims(tf.random.uniform(shape = style.shape[1:]), axis=0)
         return style_fake
 
     def decode(self, content, style):
-        h = content + style
+        if self.concatenate:
+            style = tf.ones_like(content) * style
+            h = tf.concat((content, style), axis=3)
+        else:
+            h = content + style
         x_hat = self.decoder(h)
         return x_hat
 
@@ -439,13 +456,13 @@ class GANGenerator(krs.models.Model):
         style_fake = self.sample_style(style)
 
         # Decode real and fake sample
-        x_real = self.decode(content, style)
+        x_hat = self.decode(content, style)
         x_fake = self.decode(content, style_fake)
 
-        return x_real, x_fake
+        return x_hat, x_fake
 
-    def compute_r_loss(self, x, x_real):
-        r_loss = tf.reduce_mean(tf.abs(x - x_real)) # MeanAbsoluteError
+    def compute_r_loss(self, x, x_hat):
+        r_loss = tf.reduce_mean(tf.abs(x - x_hat)) # MeanAbsoluteError
         self.r_loss_tracker.update_state(r_loss)
         return r_loss
     
@@ -468,9 +485,9 @@ class GANGenerator(krs.models.Model):
         self.s_loss_tracker.update_state(s_loss)
         return s_loss
     
-    def compute_loss(self, x, content, style, style_fake, x_real, x_fake, p_real, p_fake, content_hat, style_fake_hat):
+    def compute_loss(self, x, content, style, style_fake, x_hat, x_fake, p_real, p_fake, content_hat, style_fake_hat):
         # Compute loss contributions
-        r_loss = self.compute_r_loss(x, x_real)
+        r_loss = self.compute_r_loss(x, x_hat)
         gan_loss = self.compute_gan_loss(p_real, p_fake)
         c_loss = self.compute_c_loss(content, content_hat)
         s_loss = self.compute_s_loss(style_fake, style_fake_hat)
@@ -492,18 +509,18 @@ class GANGenerator(krs.models.Model):
             style_fake = self.sample_style(style)
 
             # Decode real and fake
-            x_real = self.decode(content, style)
+            x_hat = self.decode(content, style)
             x_fake = self.decode(content, style_fake)
 
             # Discriminate
-            p_real = discriminator(x_real)
+            p_real = discriminator(x)
             p_fake = discriminator(x_fake)
         
             # Encode fake
             content_hat, style_fake_hat = self.encode(x_fake)
 
             # Compute loss
-            loss = self.compute_loss(x, content, style, style_fake, x_real, x_fake, p_real, p_fake, content_hat, style_fake_hat)
+            loss = self.compute_loss(x, content, style, style_fake, x_hat, x_fake, p_real, p_fake, content_hat, style_fake_hat)
         
         # Backpropagation
         trainable_weights = self.trainable_weights
