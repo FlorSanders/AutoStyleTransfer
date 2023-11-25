@@ -149,7 +149,7 @@ class VariationalAutoencoder(krs.models.Model):
     
     def reparametrize(self, mu, logsigma2):
         z = tf.random.normal(shape=logsigma2.shape[1:])
-        h = mu + tf.exp(tf.clip_by_value(logsigma2, 0., 20.)) * z
+        h = mu + tf.exp(tf.clip_by_value(logsigma2, 0., 10.)) * z
         return h
     
     def decode(self, h):
@@ -169,7 +169,7 @@ class VariationalAutoencoder(krs.models.Model):
 
     def compute_kl_loss(self, mu, logsigma2):
         # See: https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence
-        kl_loss = tf.reduce_mean(1/2 * (tf.exp(tf.clip_by_value(logsigma2, 0., 20.)) + mu**2 - logsigma2 - 1))
+        kl_loss = tf.reduce_mean(1/2 * (tf.exp(tf.clip_by_value(logsigma2, 0., 10.)) + mu**2 - logsigma2 - 1))
         self.kl_loss_tracker.update_state(kl_loss)
         return kl_loss
 
