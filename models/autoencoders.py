@@ -280,7 +280,7 @@ class GANDiscriminator(krs.models.Model):
         # RaGAN loss
         # The discriminator wants p_real to be close to 1 and p_fake to be close to 0
         real_loss = tf.reduce_mean(((p_real - 1) - tf.reduce_mean(p_fake))**2)
-        fake_loss = tf.reduce_mean(((p_fake + 1) - tf.reduce_mean(p_real))**2)
+        fake_loss = tf.reduce_mean((p_fake - (tf.reduce_mean(p_real) - 1))**2)
         d_loss = (real_loss + fake_loss) / 2
         self.d_loss_tracker.update_state(d_loss)
         return d_loss
@@ -298,12 +298,12 @@ class GANDiscriminator(krs.models.Model):
         x, y = data
 
         # Generate real & fake sample
-        x_real, x_fake = generator(x)
+        x_hat, x_fake = generator(x)
 
         # Forward propagation
         with tf.GradientTape() as tape:
             # Discriminate
-            p_real = self.call(x_real)
+            p_real = self.call(x)
             p_fake = self.call(x_fake)
 
             # Compute loss
@@ -324,10 +324,10 @@ class GANDiscriminator(krs.models.Model):
         x, y = data
 
         # Generate real & fake sample
-        x_real, x_fake = generator(x)
+        x_hat, x_fake = generator(x)
 
         # Discriminate
-        p_real = self.call(x_real)
+        p_real = self.call(x)
         p_fake = self.call(x_fake)
 
         # Compute loss
@@ -354,6 +354,7 @@ class GANGenerator(krs.models.Model):
         self.input_chans_multiplier = params.get("input_chans_multiplier", 1)
         self.skip_connection = params.get("skip_connection", True)
         self.activation = params.get("activation", "relu")
+        self.hidden_activation = params.get("hidden_activation", "sigmoid")
         self.pooling_type = params.get("pooling_type", "average")
         self.gan_reg = params.get("gan_reg")
         self.c_reg = params.get("c_reg")
@@ -384,6 +385,7 @@ class GANGenerator(krs.models.Model):
             self.conv_depth,
             skip_connection=self.skip_connection,
             activation=self.activation,
+            output_activation=self.hidden_activation,
             pooling_type=self.pooling_type
         )
         
@@ -396,6 +398,7 @@ class GANGenerator(krs.models.Model):
                 self.conv_depth,
                 skip_connection=self.skip_connection,
                 activation=self.activation,
+                output_activation=self.hidden_activation,
                 pooling_type=self.pooling_type,
             )
 
@@ -444,7 +447,7 @@ class GANGenerator(krs.models.Model):
             style = tf.ones_like(content) * style
             h = tf.concat((content, style), axis=3)
         else:
-            h = content + style
+            h = (content + style) / 2
         x_hat = self.decoder(h)
         return x_hat
 
@@ -469,7 +472,7 @@ class GANGenerator(krs.models.Model):
     def compute_gan_loss(self, p_real, p_fake):
         # RaGAN loss
         # The generator wants p_real to be close to 0 and p_fake to be close to 1
-        real_loss = tf.reduce_mean(((p_real + 1) - tf.reduce_mean(p_fake))**2)
+        real_loss = tf.reduce_mean((p_real - (tf.reduce_mean(p_fake) - 1))**2)
         fake_loss = tf.reduce_mean(((p_fake - 1) - tf.reduce_mean(p_real))**2)
         gan_loss = (real_loss + fake_loss) / 2
         self.gan_loss_tracker.update_state(gan_loss)
@@ -485,7 +488,19 @@ class GANGenerator(krs.models.Model):
         self.s_loss_tracker.update_state(s_loss)
         return s_loss
     
-    def compute_loss(self, x, content, style, style_fake, x_hat, x_fake, p_real, p_fake, content_hat, style_fake_hat):
+    def compute_loss(
+        self,
+        x, 
+        content, 
+        style, 
+        style_fake, 
+        x_hat, 
+        x_fake, 
+        p_real, 
+        p_fake, 
+        content_hat, 
+        style_fake_hat
+    ):
         # Compute loss contributions
         r_loss = self.compute_r_loss(x, x_hat)
         gan_loss = self.compute_gan_loss(p_real, p_fake)
@@ -520,7 +535,18 @@ class GANGenerator(krs.models.Model):
             content_hat, style_fake_hat = self.encode(x_fake)
 
             # Compute loss
-            loss = self.compute_loss(x, content, style, style_fake, x_hat, x_fake, p_real, p_fake, content_hat, style_fake_hat)
+            loss = self.compute_loss(
+                x, 
+                content, 
+                style, 
+                style_fake, 
+                x_hat, 
+                x_fake, 
+                p_real, 
+                p_fake, 
+                content_hat, 
+                style_fake_hat
+            )
         
         # Backpropagation
         trainable_weights = self.trainable_weights
@@ -536,17 +562,36 @@ class GANGenerator(krs.models.Model):
         # Unpack data
         x, y = data
 
-        # Perform autoencoding
+        # Encode real
         content, style = self.encode(x)
+
+        # Create fake style
         style_fake = self.sample_style(style)
-        x_real = self.decode(content, style)
+
+        # Decode real and fake
+        x_hat = self.decode(content, style)
         x_fake = self.decode(content, style_fake)
-        p_real = discriminator(x_real)
+
+        # Discriminate
+        p_real = discriminator(x)
         p_fake = discriminator(x_fake)
+    
+        # Encode fake
         content_hat, style_fake_hat = self.encode(x_fake)
 
-        # Compute validation loss
-        loss = self.compute_loss(x, content, style, style_fake, x_real, x_fake, p_real, p_fake, content_hat, style_fake_hat)
+        # Compute loss
+        loss = self.compute_loss(
+            x, 
+            content, 
+            style, 
+            style_fake, 
+            x_hat, 
+            x_fake, 
+            p_real, 
+            p_fake, 
+            content_hat, 
+            style_fake_hat
+        )
 
         # Return losses
         return {m.name: m.result() for m in self.metrics}

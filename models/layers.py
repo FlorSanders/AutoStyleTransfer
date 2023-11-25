@@ -220,6 +220,7 @@ class Conv2DEncoder(krs.models.Model):
         conv_depth,
         skip_connection=True,
         activation="relu",
+        output_activation="relu",
         pooling_type="average",
     ):
         super().__init__()
@@ -231,6 +232,7 @@ class Conv2DEncoder(krs.models.Model):
         self.conv_depth = conv_depth
         self.skip_connection = skip_connection
         self.activation = activation
+        self.output_activation = output_activation
         self.pooling_type = pooling_type
 
         # Build encoder
@@ -257,7 +259,7 @@ class Conv2DEncoder(krs.models.Model):
                 self.kernel_size,
                 self.conv_depth,
                 skip_connection=self.skip_connection,
-                activation=self.activation,
+                activation=self.output_activation,
                 add_padding=False,
                 pooling_type="none"
             )
