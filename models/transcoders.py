@@ -74,8 +74,8 @@ class Conv2DTranscoder(krs.models.Model):
     
     def compute_kl_loss(self, hX, hY):
         # Kullback Leibler Loss (hX = logsigma2) --> dissimilarity from N(0,1)
-        klX_loss = tf.reduce_mean(1/2 * (tf.exp(tf.clip_by_value(hX, 0., 20.)) - hX - 1))
-        klY_loss = tf.reduce_mean(1/2 * (tf.exp(tf.clip_by_value(hY, 0., 20.)) - hY - 1))
+        klX_loss = tf.reduce_mean(1/2 * (tf.exp(tf.clip_by_value(hX, 0., 10.)) - hX - 1))
+        klY_loss = tf.reduce_mean(1/2 * (tf.exp(tf.clip_by_value(hY, 0., 10.)) - hY - 1))
         # Kullback Leibler Loss --> dissimilarity between one another
         kl_loss = tf.math.abs(klX_loss - klY_loss)
         self.kl_loss_tracker.update_state(kl_loss)
@@ -191,7 +191,7 @@ class VariationalTranscoder(krs.models.Model):
     
     def reparametrize(self, mu, logsigma2):
         z = tf.random.normal(shape=logsigma2.shape[1:])
-        h = mu + tf.exp(tf.clip_by_value(logsigma2, 0., 20.)) * z
+        h = mu + tf.exp(tf.clip_by_value(logsigma2, 0., 10.)) * z
         return h
     
     def decode(self, h, toY=True):
@@ -236,8 +236,8 @@ class VariationalTranscoder(krs.models.Model):
 
     def compute_kl_loss(self, muX, logsigma2X, muY, logsigma2Y):
         # Kullback leibler divergence for each contribution
-        klX_loss = tf.reduce_mean(1/2 * (tf.exp(tf.clip_by_value(logsigma2X, 0., 20.)) + muX**2 - logsigma2X - 1))
-        klY_loss = tf.reduce_mean(1/2 * (tf.exp(tf.clip_by_value(logsigma2Y, 0., 20.)) + muY**2 - logsigma2Y - 1))
+        klX_loss = tf.reduce_mean(1/2 * (tf.exp(tf.clip_by_value(logsigma2X, 0., 10.)) + muX**2 - logsigma2X - 1))
+        klY_loss = tf.reduce_mean(1/2 * (tf.exp(tf.clip_by_value(logsigma2Y, 0., 10.)) + muY**2 - logsigma2Y - 1))
         # Balance individual divergences with relative divergence
         kl_loss = (klX_loss + klY_loss) / 2 #+ tf.abs(klX_loss - klY_loss)
         self.kl_loss_tracker.update_state(kl_loss)
