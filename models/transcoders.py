@@ -239,7 +239,7 @@ class VariationalTranscoder(krs.models.Model):
         klX_loss = tf.reduce_mean(1/2 * (tf.exp(tf.clip_by_value(logsigma2X, 0., 20.)) + muX**2 - logsigma2X - 1))
         klY_loss = tf.reduce_mean(1/2 * (tf.exp(tf.clip_by_value(logsigma2Y, 0., 20.)) + muY**2 - logsigma2Y - 1))
         # Balance individual divergences with relative divergence
-        kl_loss = (klX_loss + klY_loss) / 2 + tf.abs(klX_loss - klY_loss)
+        kl_loss = (klX_loss + klY_loss) / 2 #+ tf.abs(klX_loss - klY_loss)
         self.kl_loss_tracker.update_state(kl_loss)
         return kl_loss
 
