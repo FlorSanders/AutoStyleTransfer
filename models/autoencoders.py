@@ -385,7 +385,7 @@ class GANGenerator(krs.models.Model):
             self.conv_depth,
             skip_connection=self.skip_connection,
             activation=self.activation,
-            output_activation=self.hidden_activation,
+            output_activation=self.activation,
             pooling_type=self.pooling_type
         )
         
