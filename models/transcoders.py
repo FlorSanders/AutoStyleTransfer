@@ -341,11 +341,11 @@ class GANDiscriminators(krs.models.Model):
     def compute_loss(self, pX_real, pX_fake, pY_real, pY_fake):
         # X loss
         realX_loss = tf.reduce_mean(((pX_real - 1) - tf.reduce_mean(pX_fake))**2)
-        fakeX_loss = tf.reduce_mean(((pX_fake + 1) - tf.reduce_mean(pX_real))**2)
+        fakeX_loss = tf.reduce_mean((pX_fake - (tf.reduce_mean(pX_real) - 1))**2)
         dX_loss = (realX_loss + fakeX_loss) / 2
         # Y loss
         realY_loss = tf.reduce_mean(((pY_real - 1) - tf.reduce_mean(pY_fake))**2)
-        fakeY_loss = tf.reduce_mean(((pY_fake + 1) - tf.reduce_mean(pY_real))**2)
+        fakeY_loss = tf.reduce_mean((pY_fake - (tf.reduce_mean(pY_real) - 1))**2)
         dY_loss = (realY_loss + fakeY_loss) / 2
         # Combined
         d_loss = (dX_loss + dY_loss) / 2
@@ -367,10 +367,6 @@ class GANDiscriminators(krs.models.Model):
         contentX, styleX = generator.encode(X, Xto=True)
         contentY, styleY = generator.encode(Y, Xto=False)
 
-        # Decode data
-        X_hat = generator.decode(contentX, styleX, toY=False)
-        Y_hat = generator.decode(contentY, styleY, toY=True)
-
         # Generate fake styles
         styleX_fake = generator.sample_style(styleX)
         styleY_fake = generator.sample_style(styleY)
@@ -382,9 +378,9 @@ class GANDiscriminators(krs.models.Model):
         # Forward propagation
         with tf.GradientTape() as tape:
             # Discriminate
-            pX_real = self.discriminatorX(X_hat)
+            pX_real = self.discriminatorX(X)
             pX_fake = self.discriminatorX(X_fake)
-            pY_real = self.discriminatorY(Y_hat)
+            pY_real = self.discriminatorY(Y)
             pY_fake = self.discriminatorY(Y_fake)
 
             # Compute loss
@@ -408,10 +404,6 @@ class GANDiscriminators(krs.models.Model):
         contentX, styleX = generator.encode(X, Xto=True)
         contentY, styleY = generator.encode(Y, Xto=False)
 
-        # Decode data
-        X_hat = generator.decode(contentX, styleX, toY=False)
-        Y_hat = generator.decode(contentY, styleY, toY=True)
-
         # Generate fake styles
         styleX_fake = generator.sample_style(styleX)
         styleY_fake = generator.sample_style(styleY)
@@ -421,9 +413,9 @@ class GANDiscriminators(krs.models.Model):
         X_fake = generator.decode(contentY, styleX_fake, toY=False)
 
         # Discriminate
-        pX_real = self.discriminatorX(X_hat)
+        pX_real = self.discriminatorX(X)
         pX_fake = self.discriminatorX(X_fake)
-        pY_real = self.discriminatorY(Y_hat)
+        pY_real = self.discriminatorY(Y)
         pY_fake = self.discriminatorY(Y_fake)
 
         # Compute loss
@@ -441,6 +433,7 @@ class GANTranscoder(krs.models.Model):
         self.gan_reg = params.get("gan_reg")
         self.c_reg = params.get("c_reg")
         self.s_reg = params.get("s_reg")
+        self.use_fake_style = params.pop("use_fake_style")
         
         # Intialize two identical autoencoders
         self.coderX = GANGenerator(**params)
@@ -465,15 +458,13 @@ class GANTranscoder(krs.models.Model):
 
     def encode(self, I, Xto=True):
         if Xto:
-            content = self.coderX.content_encoder(I)
-            style = self.coderX.style_encoder(I)
+            content, style = self.coderX.encode(I)
         else:
-            content = self.coderY.content_encoder(I)
-            style = self.coderY.style_encoder(I)
+            content, style = self.coderY.encode(I)
         return content, style
 
     def sample_style(self, style):
-        style_fake = tf.random.normal(shape = style.shape[1:])
+        style_fake = self.coderX.sample_style(style)
         return style_fake
 
     def decode(self, content, style, toY=True):
@@ -506,11 +497,11 @@ class GANTranscoder(krs.models.Model):
     
     def compute_gan_loss(self, pX_real, pX_fake, pY_real, pY_fake):
         # Gan loss for X
-        realX_loss = tf.reduce_mean(((pX_real + 1) - tf.reduce_mean(pX_fake))**2)
+        realX_loss = tf.reduce_mean((pX_real - (tf.reduce_mean(pX_fake) - 1))**2)
         fakeX_loss = tf.reduce_mean(((pX_fake - 1) - tf.reduce_mean(pX_real))**2)
         ganX_loss = (realX_loss + fakeX_loss) / 2
         # Gan loss for Y
-        realY_loss = tf.reduce_mean(((pY_real + 1) - tf.reduce_mean(pY_fake))**2)
+        realY_loss = tf.reduce_mean((pY_real - (tf.reduce_mean(pY_fake) - 1))**2)
         fakeY_loss = tf.reduce_mean(((pY_fake - 1) - tf.reduce_mean(pY_real))**2)
         ganY_loss = (realY_loss + fakeY_loss) / 2
         # Total Gan loss
@@ -569,17 +560,17 @@ class GANTranscoder(krs.models.Model):
             Y_hat = self.decode(contentY, styleY, toY=True)
 
             # Generate fake styles
-            styleX_fake = self.sample_style(styleX)
-            styleY_fake = self.sample_style(styleY)
+            styleX_fake = self.sample_style(styleX) if self.use_fake_style else styleX
+            styleY_fake = self.sample_style(styleY) if self.use_fake_style else styleY
 
             # Cross Decode
             Y_fake = self.decode(contentX, styleY_fake, toY=True)
             X_fake = self.decode(contentY, styleX_fake, toY=False)
 
             # Discriminate
-            pX_real = discriminator.discriminatorX(X_hat)
+            pX_real = discriminator.discriminatorX(X)
             pX_fake = discriminator.discriminatorX(X_fake)
-            pY_real = discriminator.discriminatorY(Y_hat)
+            pY_real = discriminator.discriminatorY(Y)
             pY_fake = discriminator.discriminatorY(Y_fake)
 
             # Cross Encode
@@ -621,17 +612,17 @@ class GANTranscoder(krs.models.Model):
         Y_hat = self.decode(contentY, styleY, toY=True)
 
         # Generate fake styles
-        styleX_fake = self.sample_style(styleX)
-        styleY_fake = self.sample_style(styleY)
+        styleX_fake = self.sample_style(styleX) if self.use_fake_style else styleX
+        styleY_fake = self.sample_style(styleY) if self.use_fake_style else styleY
 
         # Cross Decode
         Y_fake = self.decode(contentX, styleY_fake, toY=True)
         X_fake = self.decode(contentY, styleX_fake, toY=False)
 
         # Discriminate
-        pX_real = discriminator.discriminatorX(X_hat)
+        pX_real = discriminator.discriminatorX(X)
         pX_fake = discriminator.discriminatorX(X_fake)
-        pY_real = discriminator.discriminatorY(Y_hat)
+        pY_real = discriminator.discriminatorY(Y)
         pY_fake = discriminator.discriminatorY(Y_fake)
 
         # Cross Encode
