@@ -1,7 +1,7 @@
 import tensorflow as tf
 import tensorflow.keras as krs
 import numpy as np
-from .autoencoders import Conv2DAutoencoder, VariationalAutoencoder, GANGenerator, GANDiscriminator
+from .autoencoders import Conv2DAutoencoder, VariationalAutoencoder, GANGenerator, GANDiscriminator, MUNITGenerator
 
 @krs.saving.register_keras_serializable()
 class Conv2DTranscoder(krs.models.Model):
@@ -434,10 +434,15 @@ class GANTranscoder(krs.models.Model):
         self.c_reg = params.get("c_reg")
         self.s_reg = params.get("s_reg")
         self.use_fake_style = params.pop("use_fake_style")
+        self.is_munit = params.pop("is_munit", False)
         
         # Intialize two identical autoencoders
-        self.coderX = GANGenerator(**params)
-        self.coderY = GANGenerator(**params)
+        if self.is_munit:
+            self.coderX = MUNITGenerator(**params)
+            self.coderY = MUNITGenerator(**params)
+        else:
+            self.coderX = GANGenerator(**params)
+            self.coderY = GANGenerator(**params)
 
         # Keep track of losses
         self.loss_tracker = krs.metrics.Mean(name="loss") # Total loss
@@ -468,7 +473,6 @@ class GANTranscoder(krs.models.Model):
         return style_fake
 
     def decode(self, content, style, toY=True):
-        h = content + style
         if toY:
             O = self.coderY.decode(content, style)
         else:
