@@ -2,6 +2,60 @@ import tensorflow as tf
 import tensorflow.keras as krs
 import numpy as np
 
+class AdaptiveInstanceNormalization(krs.layers.Layer):
+    def __init__(self, epsilon=1e-5, momentum=0.1):
+        super().__init__()
+        self.epsilon = epsilon
+        self.momentum = momentum
+        self.weight = None
+        self.bias = None
+        self.mean = None
+        self.std = None
+    
+    def build(self, input_shape):
+        # Deconstruct input shape
+        n_batch, n_time, n_mels, n_chans = input_shape
+        self.n_chans = n_chans
+        shape = (1, 1, 1, n_chans)
+
+        # Build 
+        self.mean = tf.Variable(tf.zeros(shape))
+        self.std = tf.Variable(tf.ones(shape))
+
+        # Run superclass build
+        super().build(input_shape)
+    
+    def call(self, x, training=None):
+        assert self.bias is not None and self.weight is not None
+
+        if training != False:
+            # Update moving average for mean & variance
+            mu = tf.reshape(tf.math.reduce_mean(x, axis=(0, 1, 2)), (-1, 1, 1, self.n_chans))
+            sigma = tf.reshape(tf.math.reduce_std(x, axis=(0, 1, 2)), (-1, 1, 1, self.n_chans))
+
+            self.mean.assign((tf.constant(1.0) - self.momentum) * self.mean + self.momentum * mu)
+            self.std.assign((tf.constant(1.0) - self.momentum) * self.std + self.momentum * sigma)
+        
+        # Normalize
+        x_norm = (x - self.mean) / (self.std + self.epsilon)
+
+        # Rescale
+        weight = tf.reshape(self.weight, (-1, 1, 1, self.n_chans))
+        bias = tf.reshape(self.bias, (-1, 1, 1, self.n_chans))
+        x_scaled = x_norm * weight + bias
+        
+        return x_scaled
+    
+    def get_config(self):
+        return {
+            "epsilon": self.epsilon,
+            "momentum": self.momentum,
+            "weight": self.weight,
+            "bias": self.bias,
+            "mean": self.mean,
+            "std": self.std,
+        }
+
 class Conv2DBlock(krs.layers.Layer):
     """
     Block with a sequence of Conv2D layers (with the same parameters) and an optional skip connection
