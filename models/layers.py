@@ -104,14 +104,16 @@ class Conv2DBlock(krs.layers.Layer):
     
     def call(self, inputs):
         x = inputs
-        for conv_layer in self.conv_layers:
+        for i, conv_layer in enumerate(self.conv_layers):
             x = conv_layer(x)
+            if i == 0 and self.skip_connection:
+                skip = x
         
-        if self.skip_connection:
-            inputs_mean = tf.reduce_mean(inputs, axis=3)
-            inputs_mean = tf.expand_dims(inputs_mean, 3)
-            skip = tf.repeat(inputs_mean, x.shape[3], axis=3)
+        if self.skip_connection and len(self.conv_layers) > 1:
+            # Everything past the first conv layer can be skipped
             x = tf.add(x, skip)
+        elif self.skip_connection:
+            print("WARNING: Skip connection has no effect if conv_depth = 1")
         
         return x
 
