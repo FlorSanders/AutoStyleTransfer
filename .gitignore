@@ -164,4 +164,14 @@ raw_data/
 raw_data_cuts/
 cut/
 npy/
-results/
+results/**/*.index
+results/**/*.data*
+!results/**/model.index
+!results/**/model.data*
+
+results/**/checkpoint
+results/**/*.png
+results/**/*.wav
+demo/**/*
+!demo/classical.wav
+!demo/jazz.wav

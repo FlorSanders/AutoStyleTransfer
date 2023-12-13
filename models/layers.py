@@ -66,7 +66,7 @@ class Conv2DBlock(krs.layers.Layer):
         self, 
         filters, 
         kernel_size, 
-        depth, 
+        depth,
         skip_connection=True, 
         activation="relu", 
         is_transpose=False, 
@@ -266,7 +266,7 @@ class Conv2DDecoderBlock(krs.layers.Layer):
             "upsampling": self.upsampling,
         }
 
-@krs.saving.register_keras_serializable()
+#@krs.saving.register_keras_serializable()
 class Conv2DEncoder(krs.models.Model):
     def __init__(
         self, 
@@ -325,7 +325,7 @@ class Conv2DEncoder(krs.models.Model):
         h = self.encoder(x)
         return h
 
-@krs.saving.register_keras_serializable()
+#@krs.saving.register_keras_serializable()
 class Conv2DDecoder(krs.models.Model):
     def __init__(
         self,
@@ -366,7 +366,7 @@ class Conv2DDecoder(krs.models.Model):
         x_hat = self.decoder(h)
         return x_hat
 
-@krs.saving.register_keras_serializable()
+#@krs.saving.register_keras_serializable()
 class MLP(krs.models.Model):
     def __init__(
         self, 

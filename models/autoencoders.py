@@ -3,7 +3,7 @@ import tensorflow.keras as krs
 import numpy as np
 from .layers import Conv2DEncoder, Conv2DDecoder, MLP, AdaptiveInstanceNormalization
 
-@krs.saving.register_keras_serializable()
+#@krs.saving.register_keras_serializable()
 class Conv2DAutoencoder(krs.models.Model):
     def __init__(self, **params):
         super().__init__()
@@ -62,7 +62,7 @@ class Conv2DAutoencoder(krs.models.Model):
         x_hat = self.decoder(h)
         return x_hat
 
-@krs.saving.register_keras_serializable()
+#@krs.saving.register_keras_serializable()
 class VariationalAutoencoder(krs.models.Model):
     # Based on: https://keras.io/examples/generative/vae/
 
@@ -81,6 +81,7 @@ class VariationalAutoencoder(krs.models.Model):
         self.activation = params.get("activation", "relu")
         self.pooling_type = params.get("pooling_type", "average")
         self.kl_reg = params.get("kl_reg")
+        self.vol_reg = params.get("vol_reg")
 
         # Determine nr of layers to be used (and check config validity)
         self.k = np.log2(self.input_chans_multiplier)
@@ -133,6 +134,7 @@ class VariationalAutoencoder(krs.models.Model):
         self.loss_tracker = krs.metrics.Mean(name="loss") # total loss
         self.r_loss_tracker = krs.metrics.Mean(name="r_loss") # reconstruction loss
         self.kl_loss_tracker = krs.metrics.Mean(name="kl_loss") # kullback leibler loss
+        self.vol_loss_tracker = krs.metrics.Mean(name="vol_loss") # Volume loss
     
     @property
     def metrics(self):
@@ -140,6 +142,7 @@ class VariationalAutoencoder(krs.models.Model):
             self.loss_tracker,
             self.r_loss_tracker,
             self.kl_loss_tracker,
+            self.vol_loss_tracker,
         ]
 
     def encode(self, x):
@@ -172,11 +175,19 @@ class VariationalAutoencoder(krs.models.Model):
         kl_loss = tf.reduce_mean(1/2 * (tf.exp(tf.clip_by_value(logsigma2, 0., 10.)) + mu**2 - logsigma2 - 1))
         self.kl_loss_tracker.update_state(kl_loss)
         return kl_loss
+    
+    def compute_vol_loss(self, x, x_hat):
+        in_vol = tf.reduce_mean(tf.abs(x), axis=(1,2,3))
+        out_vol = tf.reduce_mean(tf.abs(x_hat), axis=(1,2,3))
+        vol_loss = tf.reduce_mean(tf.abs(out_vol - in_vol))
+        self.vol_loss_tracker.update_state(vol_loss)
+        return vol_loss
 
     def compute_loss(self, x, x_hat, mu, logsigma2):
         r_loss = self.compute_r_loss(x, x_hat)
         kl_loss = self.compute_kl_loss(x, x_hat)
-        loss = r_loss + self.kl_reg * kl_loss
+        vol_loss = self.compute_vol_loss(x, x_hat)
+        loss = r_loss + self.kl_reg * kl_loss + self.vol_reg * vol_loss
         self.loss_tracker.update_state(loss)
         return loss
     
@@ -219,7 +230,7 @@ class VariationalAutoencoder(krs.models.Model):
         # Return losses
         return {m.name: m.result() for m in self.metrics}
 
-@krs.saving.register_keras_serializable()
+#@krs.saving.register_keras_serializable()
 class GANDiscriminator(krs.models.Model):
     def __init__(self, **params):
         super().__init__()
@@ -230,8 +241,9 @@ class GANDiscriminator(krs.models.Model):
         self.input_time, self.input_mels, self.input_chans = self.feature_shape
         self.feature_size = np.prod(self.feature_shape)
         self.mlp_layers = params.get("mlp_layers")
-        self.conv_compression = params.get("conv_compression")
+        self.conv_layers = params.get("conv_layers")
         self.conv_kernel_size = params.get("conv_kernel_size")
+        self.conv_pooling_size = params.get("conv_pooling_size")
         self.conv_pooling_type = params.get("conv_pooling_type", "max")
 
         # Store constants
@@ -241,30 +253,38 @@ class GANDiscriminator(krs.models.Model):
         self.conv_activation = "relu"
         self.mlp_activation = "relu"
         self.output_activation = "sigmoid"
-
-        # CNN feature extractor
-        self.conv_layers = np.log2(self.conv_compression)
-        assert self.conv_layers == np.round(self.conv_layers), "compression should be a power of 2"
-        self.conv_layers = int(self.conv_layers)
-        conv_layer_filters = [self.input_chans * self.conv_input_chans_multiplier * 2**(n+1) for n in range(self.conv_layers)]
-        conv_layer_padding = [False] * self.conv_layers
-        self.cnn = Conv2DEncoder(
-            conv_layer_filters,
-            conv_layer_padding,
-            self.conv_kernel_size,
-            self.conv_depth,
-            skip_connection=self.conv_skip_connection,
-            activation=self.conv_activation,
-            pooling_type=self.conv_pooling_type
-        )
+        self.output_size = 1
+        
+        # Figure out layer sizes
+        conv_channels = np.logspace(1, self.conv_layers, self.conv_layers, base=2).astype(int)
+        print(f"{conv_channels = }")
+        conv_output_size = round(self.feature_size / (self.conv_pooling_size**(2 * self.conv_layers)) * conv_channels[-1])
+        print(f"{conv_output_size = }")
+        mlp_sizes = np.round(np.logspace(np.log2(1), np.log2(conv_output_size), self.mlp_layers + 1, base=2)[:-1][::-1]).astype(int)
+        print(f"{mlp_sizes = }")
+           
+        # CNN Feature extractor
+        self.cnn = krs.models.Sequential()
+        for conv_layer in range(self.conv_layers):
+            self.cnn.add(
+                krs.layers.Conv2D(
+                    conv_channels[conv_layer],
+                    self.conv_kernel_size,
+                    padding="same",
+                    activation=self.conv_activation,
+                )
+            )
+            if self.conv_pooling_type == "average":
+                self.cnn.add(krs.layers.AveragePooling2D(pool_size=self.conv_pooling_size))
+            elif self.conv_pooling_type == "max":
+                self.cnn.add(krs.layers.MaxPooling2D(pool_size=self.conv_pooling_size))
+            else:
+                raise ValueError(f"Unknown pooling type: {pooling_type}")
 
         # MLP classifier
-        mlp_input_size = self.feature_size / self.conv_compression
-        mlp_output_size = 1
-        mlp_hidden_dims = np.round(np.logspace(np.log2(mlp_input_size), np.log2(mlp_output_size), self.mlp_layers + 1, base=2)[1:-1]).astype(int)
         self.mlp = MLP(
-            mlp_hidden_dims,
-            mlp_output_size,
+            mlp_sizes[:-1],
+            mlp_sizes[-1],
             hidden_activation=self.mlp_activation,
             output_activation=self.output_activation,
         )
@@ -339,7 +359,7 @@ class GANDiscriminator(krs.models.Model):
     def get_config(self):
         return self.params
 
-@krs.saving.register_keras_serializable()
+#@krs.saving.register_keras_serializable()
 class GANGenerator(krs.models.Model):
     def __init__(self, **params):
         super().__init__()
@@ -614,7 +634,7 @@ class GANGenerator(krs.models.Model):
     def get_config(self):
         return self.params
 
-@krs.saving.register_keras_serializable()
+#@krs.saving.register_keras_serializable()
 class MUNITGenerator(krs.models.Model):
     def __init__(self, **params):
         super().__init__()

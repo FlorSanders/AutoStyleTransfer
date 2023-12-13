@@ -3,7 +3,7 @@ import tensorflow.keras as krs
 import numpy as np
 from .autoencoders import Conv2DAutoencoder, VariationalAutoencoder, GANGenerator, GANDiscriminator, MUNITGenerator
 
-@krs.saving.register_keras_serializable()
+#@krs.saving.register_keras_serializable()
 class Conv2DTranscoder(krs.models.Model):
     def __init__(self, **params):
         super().__init__()
@@ -48,6 +48,11 @@ class Conv2DTranscoder(krs.models.Model):
     def transcode(self, I, XtoY=True):
         h = self.encode(I, Xto=XtoY)
         O = self.decode(h, toY=XtoY)
+        return O
+    
+    def selfcode(self, I, XtoX=True):
+        h = self.encode(I, Xto=XtoX)
+        O = self.decode(h, toY=not XtoX)
         return O
     
     def call(self, data):
@@ -154,7 +159,7 @@ class Conv2DTranscoder(krs.models.Model):
         # Return losses
         return {m.name: m.result() for m in self.metrics}
 
-@krs.saving.register_keras_serializable()
+#@krs.saving.register_keras_serializable()
 class VariationalTranscoder(krs.models.Model):
     def __init__(self, **params):
         super().__init__()
@@ -205,6 +210,12 @@ class VariationalTranscoder(krs.models.Model):
         mu, logsigma2 = self.encode(I, Xto=XtoY)
         h = self.reparametrize(mu, logsigma2)
         O = self.decode(h, toY=XtoY)
+        return O
+    
+    def selfcode(self, I, XtoX=True):
+        mu, logsigma2 = self.encode(I, Xto=XtoX)
+        h = self.reparametrize(mu, logsigma2)
+        O = self.decode(h, toY=not XtoX)
         return O
     
     def call(self, data):
@@ -323,7 +334,7 @@ class VariationalTranscoder(krs.models.Model):
 
         return {m.name: m.result() for m in self.metrics}
 
-@krs.saving.register_keras_serializable()
+#@krs.saving.register_keras_serializable()
 class GANDiscriminators(krs.models.Model):
     def __init__(self, **params):
         super().__init__()
@@ -424,7 +435,7 @@ class GANDiscriminators(krs.models.Model):
         # Return loss
         return {m.name: m.result() for m in self.metrics}
 
-@krs.saving.register_keras_serializable()
+#@krs.saving.register_keras_serializable()
 class GANTranscoder(krs.models.Model):
     def __init__(self, **params):
         super().__init__()
@@ -481,8 +492,13 @@ class GANTranscoder(krs.models.Model):
 
     def transcode(self, I, XtoY=True):
         content, style = self.encode(I, Xto=XtoY)
-        style_fake = self.sample_style(style)
+        style_fake = self.sample_style(style) if self.use_fake_style else style
         O = self.decode(content, style_fake, toY=XtoY)
+        return O
+    
+    def selfcode(self, I, XtoX=True):
+        content, style = self.encode(I, Xto=XtoX)
+        O = self.decode(content, style, toY=not XtoX)
         return O
     
     def call(self, data):

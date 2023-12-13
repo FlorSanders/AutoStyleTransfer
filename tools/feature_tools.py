@@ -63,7 +63,7 @@ def load_data(data_path, feature_extractors = [compute_mels], n_samples="all"):
         # Add features to data
         data[i] = features
         # Print progress
-        if i % (n_samples // 100) == 0:
+        if i % (max(n_samples // 100, 1)) == 0:
             sys.stdout.write('\r')
             sys.stdout.write(f"{(i+1) / n_samples * 100:.0f} %")
             sys.stdout.flush()
